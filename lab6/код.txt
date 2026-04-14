@@ -1,0 +1,124 @@
+﻿#include <opencv2/opencv.hpp>
+#include <iostream>
+#include <vector>
+#include <string>
+
+int main() {
+    setlocale(LC_ALL, "Russian");
+
+    cv::CascadeClassifier faceCascade;
+    cv::CascadeClassifier eyeCascade;
+    cv::CascadeClassifier smileCascade;
+
+    if (!faceCascade.load("haarcascade_frontalface_default.xml")) {
+        std::cerr << "ОШИБКА: не найден haarcascade_frontalface_default.xml" << std::endl;
+        std::cout << "Убедитесь, что файл лежит в папке с программой" << std::endl;
+        return -1;
+    }
+
+    if (!eyeCascade.load("haarcascade_eye.xml")) {
+        std::cerr << "ОШИБКА: не найден haarcascade_eye.xml" << std::endl;
+        return -1;
+    }
+
+    if (!smileCascade.load("haarcascade_smile.xml")) {
+        std::cerr << "ОШИБКА: не найден haarcascade_smile.xml" << std::endl;
+        return -1;
+    }
+
+    std::cout << "Все каскады загружены успешно!" << std::endl;
+
+    std::string videoPath = "ZUA.mp4";
+    cv::VideoCapture cap(videoPath);
+
+    if (!cap.isOpened()) {
+        std::cerr << "ОШИБКА: не удалось открыть видео: " << videoPath << std::endl;
+        return -1;
+    }
+
+    std::cout << "Видео успешно открыто!" << std::endl;
+    std::cout << "Нажмите ESC для выхода" << std::endl;
+
+    cv::Mat frame;
+    cv::Mat gray;
+    int frameCount = 0;
+
+    cv::namedWindow("Detection: Face (blue), Eyes (yellow), Mouth (red triangle)",
+        cv::WINDOW_NORMAL);
+
+    while (true) {
+        cap >> frame;
+
+        if (frame.empty()) {
+            std::cout << "Видео закончилось. Обработано " << frameCount << " кадров" << std::endl;
+            break;
+        }
+
+        frameCount++;
+
+        if (frameCount % 30 == 0) {
+            std::cout << "Обработано кадров: " << frameCount << std::endl;
+        }
+
+        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+        cv::equalizeHist(gray, gray);
+
+        std::vector<cv::Rect> faces;
+        faceCascade.detectMultiScale(gray, faces, 1.1, 5, 0, cv::Size(60, 60));
+
+        for (const auto& face : faces) {
+            cv::rectangle(frame, face, cv::Scalar(255, 0, 0), 2);
+
+            cv::Mat faceROI = gray(face);
+
+            std::vector<cv::Rect> eyes;
+            eyeCascade.detectMultiScale(faceROI, eyes, 1.1, 8, 0, cv::Size(20, 20));
+
+            for (const auto& eye : eyes) {
+                float posY = (eye.y + eye.height / 2.0f) / face.height;
+
+                if (posY < 0.45) {
+                    cv::Point center(face.x + eye.x + eye.width / 2,
+                        face.y + eye.y + eye.height / 2);
+                    int radius = (eye.width + eye.height) / 4;
+                    cv::circle(frame, center, radius, cv::Scalar(0, 255, 255), 2);
+                }
+            }
+
+            std::vector<cv::Rect> mouths;
+            smileCascade.detectMultiScale(faceROI, mouths, 1.1, 15, 0, cv::Size(25, 15));
+
+            for (const auto& mouth : mouths) {
+                float posY = (mouth.y + mouth.height / 2.0f) / face.height;
+
+                if (posY > 0.55) {
+                    cv::Point top(face.x + mouth.x + mouth.width / 2,
+                                  face.y + mouth.y);
+                    cv::Point left(face.x + mouth.x,
+                                   face.y + mouth.y + mouth.height);
+                    cv::Point right(face.x + mouth.x + mouth.width,
+                                    face.y + mouth.y + mouth.height);
+                    
+                    std::vector<cv::Point> trianglePoints = {top, left, right};
+                    
+                    cv::polylines(frame, trianglePoints, true, cv::Scalar(0, 0, 255), 2);
+                }
+            }
+        }
+
+        cv::imshow("Detection: Face (blue), Eyes (yellow), Mouth (red triangle)", frame);
+
+        char key = cv::waitKey(30);
+        if (key == 27) {
+            std::cout << "Выход по клавише ESC" << std::endl;
+            break;
+        }
+    }
+
+    cap.release();
+    cv::destroyAllWindows();
+
+    std::cout << "Программа завершена. Обработано " << frameCount << " кадров" << std::endl;
+
+    return 0;
+}
